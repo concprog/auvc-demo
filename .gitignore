@@ -1,0 +1,4 @@
+data/gestures
+__pycache__
+gesture_model_final.pth
+best_gesture_model.pth
