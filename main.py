@@ -52,57 +52,52 @@ tracking_bbox = None
 
 while True:
     ret, frame = cap.read()
-    cv2.resize(frame, (640, 480), interpolation=cv2.INTER_CUBIC)
     if not ret:
         break
 
+    # Resize the frame and assign it back
+    frame = cv2.resize(frame, (640, 480), interpolation=cv2.INTER_CUBIC)
 
     # ---------------------------------------------------------
-    # (1) On the first frame—or if the tracker loses the hand—
-    # run the detector to find a hand.
+    # (1) Run detector if no tracking data
     # --------------------------------------------------------
     if tracking_bbox is None:
         detections = hand_detector.detect(frame)
         if detections is not None:
-            # For simplicity, take the first detected hand.
             for _, bbox in detections.items():
                 tracking_bbox = bbox 
                 hand_tracker.init(frame, tracking_bbox)
                 break
-        continue
+        else:
+            continue
     else:
         # -----------------------------------------------------
-        # (2) Use the tracker to update the bounding box.
-        # If tracking fails, tracking boox is None (remember I did that in ObjectTracker)
+        # (2) Update tracker
         # -----------------------------------------------------
-        if frame.shape != (480, 640, 3):
-            # Re-detect if frame size has changed
+        new_bbox = hand_tracker.track(frame)
+        if new_bbox is None or new_bbox[2] <= 0 or new_bbox[3] <= 0:
             tracking_bbox = None
-            print(frame.shape)
         else:
-            new_bbox = hand_tracker.track(frame)
-            if new_bbox is None:
-                tracking_bbox = None
-            else:
-                tracking_bbox = new_bbox
+            tracking_bbox = new_bbox
 
     # --------------------------------------------------------
-    # (3) If we have a valid bounding box, crop the ROI and run gesture recognition.
+    # (3) Process ROI only if valid
     # --------------------------------------------------------
     if tracking_bbox is not None:
         x, y, w, h = map(int, tracking_bbox)
-        # Draw a green rectangle around the detected/tracked hand. (this is necessary as I forgot to remove it in the training data)
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        if x < 0 or y < 0 or x + w > frame.shape[1] or y + h > frame.shape[0]:
+        # Validate dimensions and coordinates
+        if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > frame.shape[1] or y + h > frame.shape[0]:
+            tracking_bbox = None
             continue
+
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
         roi = frame[y:y+h, x:x+w]
-        if roi.size:
+
+        if roi.size != 0:
             gesture_name, probs = gesture_recognizer.predict(roi)
             cv2.putText(frame, f"Gesture: {gesture_name}", (x, y-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-            # if gesture_name in gestures:
-            #     gestures[gesture_name]()
-        cv2.imshow("Gesture Recognition", frame)
+    cv2.imshow("Gesture Recognition", frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

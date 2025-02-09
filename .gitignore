@@ -1,4 +1,6 @@
 data/gestures
 __pycache__
 gesture_model_final.pth
+gesture_model_final_fp16.pth
 best_gesture_model.pth
+best_gesture_model_fp16.pth
