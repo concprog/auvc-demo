@@ -7,37 +7,37 @@ from torchvision.datasets import ImageFolder
 import cv2
 import numpy as np
 from tqdm import tqdm
-import warnings
-warnings.filterwarnings('ignore')
 
 class GestureCNN(nn.Module):
     def __init__(self, n_classes):
         super().__init__()
         self.features = nn.Sequential(
-            # Block 1: 3 -> 32 channels
+            # Block 1: 3 -> 32 channels.
+            # For 128x128 input, after conv (padding=1) we have 128x128,
+            # then MaxPool2d(2) yields 32 x 64 x 64.
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
             nn.Dropout(0.25),
-            # Block 2: 32 -> 64 channels
+            # Block 2: 32 -> 64 channels.
+            # Input size 64x64 becomes 32x32 after pooling.
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Dropout(0.25),
-            # Block 3: 64 -> 128 channels
+            # Block 3: 64 -> 128 channels.
+            # 32x32 becomes 16x16 after pooling.
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
             nn.Dropout(0.25)
         )
-        # For 256x256 input, after three poolings (dividing each spatial dim by 8) the feature map is 32x32.
+        # For 128x128 input, after three poolings (dividing each dimension by 8) the feature map is 16x16.
         self.classifier = nn.Sequential(
-            nn.Linear(128 * 32 * 32, 256),
+            nn.Linear(128 * 16 * 16, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
             nn.Linear(256, n_classes)
         )
 
@@ -45,10 +45,11 @@ class GestureCNN(nn.Module):
         x = self.features(x)
         x = torch.flatten(x, 1)
         return self.classifier(x)
+        
 
 def create_dataloaders(data_dir, batch_size=32):
     train_transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.Resize((128, 128)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(15),
         transforms.ToTensor(),
@@ -56,7 +57,7 @@ def create_dataloaders(data_dir, batch_size=32):
                              std=[0.229, 0.224, 0.225])
     ])
     test_transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.Resize((128, 128)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
@@ -76,17 +77,23 @@ def create_dataloaders(data_dir, batch_size=32):
                              shuffle=False, num_workers=2)
     return train_loader, test_loader, train_dataset.classes
 
-# 3. Improved OpenCV Integration using a GestureRecognizer that wraps our CNN.
 class GestureRecognizer:
-    def __init__(self, model_path, class_names, device='cpu'):
+    def __init__(self, model_path, class_names, device='cpu', use_fp16=False):
+        
         self.device = torch.device(device)
+        self.class_names = class_names
+        self.use_fp16 = use_fp16 and (self.device.type != 'cpu')
+        
+        # Initialize and load the model.
         self.model = GestureCNN(len(class_names)).to(self.device)
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()
-        self.class_names = class_names
+        if self.use_fp16:
+            self.model.half() 
+        
         self.transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize((256, 256)),
+            transforms.Resize((128, 128)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -95,6 +102,9 @@ class GestureRecognizer:
     def predict(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         tensor = self.transform(rgb).unsqueeze(0).to(self.device)
+  
+        if self.use_fp16:
+            tensor = tensor.half()
         with torch.no_grad():
             outputs = self.model(tensor)
             probs = torch.nn.functional.softmax(outputs, dim=1)
@@ -161,7 +171,7 @@ def train_model(model, train_loader, test_loader, n_epochs=25, lr=0.001):
             print("Saved new best model in FP16.")
     
     print(f"Best validation Accuracy: {best_acc:.4f}")
-    # Save final model in FP16
+
     model.half()
     torch.save(model.state_dict(), 'gesture_model_final_fp16.pth')
     return model, history
@@ -175,7 +185,7 @@ if __name__ == '__main__':
         model=model,
         train_loader=train_loader,
         test_loader=test_loader,
-        n_epochs=30,
+        n_epochs=50,
         lr=0.001
     )
     

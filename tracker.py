@@ -9,12 +9,11 @@ def box_to_point(bbox):
 
 
 class ObjectTracker:
-    def __init__(self, deltaX=20) -> None:
+    def __init__(self, delta=20) -> None:
         self.tracker = cv2.TrackerKCF_create()
         self.last_bbox = None
-        self.deltaX = deltaX
+        self.delta = delta
         self.distVec = 0, 0
-        self.velocity = 0
         self.motion_callback = None
 
     def on_motion(self, cb: Callable):
@@ -26,13 +25,13 @@ class ObjectTracker:
 
     def track(self, frame):
         ok, bbox = self.tracker.update(frame)
-        if not ok:
+        if not ok or not all(bbox[2:]):
             return None
         p1 = box_to_point(self.last_bbox)
         p2 = box_to_point(bbox)
         dist = np.linalg.norm(np.array(p1) - np.array(p2))
 
-        if dist > self.deltaX:
+        if dist > self.delta:
             self.distVec = p2[0] - p1[0], p2[1] - p1[1]
             if self.motion_callback is not None:
                 self.motion_callback(*self.distVec)

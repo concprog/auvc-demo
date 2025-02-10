@@ -22,7 +22,7 @@ gestures = {
     'l': lambda: print("Gesture: l"),
     'u': lambda: print("Gesture: u"),
     'perspective_view': lambda: print("Gesture: perspective_view"),
-    'top_view': lambda: print("Gesture: top_view"),
+    'neutral': lambda: print("Gesture: neutral"),
     'sketch': lambda: print("Gesture: sketch"),
     'extrude': lambda: print("Gesture: extrude")
 }
